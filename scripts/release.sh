@@ -102,19 +102,24 @@ npm run build
 if [ "$choice" = "5" ]; then
     NEW_VERSION=$CUSTOM_VERSION
     # Update version manually for custom versions
-    npm version $CUSTOM_VERSION --no-git-tag-version
+    npm version $CUSTOM_VERSION --no-git-tag-version > /dev/null
 else
     if [ "$VERSION_TYPE" = "prerelease" ]; then
         read -p "Enter prerelease tag (default: beta): " PRERELEASE_TAG
         PRERELEASE_TAG=${PRERELEASE_TAG:-beta}
-        NEW_VERSION=$(npm version prerelease --preid=$PRERELEASE_TAG --no-git-tag-version)
+        NEW_VERSION=$(npm version prerelease --preid=$PRERELEASE_TAG --no-git-tag-version 2>/dev/null)
     else
-        NEW_VERSION=$(npm version $VERSION_TYPE --no-git-tag-version)
+        NEW_VERSION=$(npm version $VERSION_TYPE --no-git-tag-version 2>/dev/null)
     fi
 fi
 
 # Clean up version string (remove 'v' prefix if present)
 NEW_VERSION=${NEW_VERSION#v}
+
+# Verify version was set correctly
+if [ -z "$NEW_VERSION" ]; then
+    NEW_VERSION=$(node -p "require('./package.json').version")
+fi
 
 echo -e "${GREEN}✅ Version bumped to: $NEW_VERSION${NC}"
 
