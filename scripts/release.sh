@@ -42,7 +42,19 @@ npm test --if-present
 
 # Test server
 echo -e "${YELLOW}🌐 Testing server...${NC}"
-timeout 10s npm run test-server || true
+# Use gtimeout on macOS or timeout on Linux
+if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout 10s npm run test-server || true
+elif command -v timeout >/dev/null 2>&1; then
+    timeout 10s npm run test-server || true
+else
+    # Fallback: start server in background and kill after 10 seconds
+    npm run test-server &
+    SERVER_PID=$!
+    sleep 10
+    kill $SERVER_PID 2>/dev/null || true
+    echo "Server test completed"
+fi
 
 # Check package
 echo -e "${YELLOW}📋 Checking package contents...${NC}"
@@ -83,9 +95,14 @@ esac
 
 # Bump version
 echo -e "${YELLOW}🔢 Bumping version...${NC}"
+
+# First, run build to ensure everything is ready
+npm run build
+
 if [ "$choice" = "5" ]; then
-    npm version $CUSTOM_VERSION --no-git-tag-version
     NEW_VERSION=$CUSTOM_VERSION
+    # Update version manually for custom versions
+    npm version $CUSTOM_VERSION --no-git-tag-version
 else
     if [ "$VERSION_TYPE" = "prerelease" ]; then
         read -p "Enter prerelease tag (default: beta): " PRERELEASE_TAG
@@ -95,6 +112,9 @@ else
         NEW_VERSION=$(npm version $VERSION_TYPE --no-git-tag-version)
     fi
 fi
+
+# Clean up version string (remove 'v' prefix if present)
+NEW_VERSION=${NEW_VERSION#v}
 
 echo -e "${GREEN}✅ Version bumped to: $NEW_VERSION${NC}"
 

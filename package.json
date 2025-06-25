@@ -16,7 +16,7 @@
     "prepublishOnly": "npm run clean && npm run build",
     "test-server": "npm run build && node test/server.js",
     "preversion": "npm run build",
-    "postversion": "git push && git push --tags",
+    "postversion": "git push && git push origin --tags",
     "release": "./scripts/release.sh",
     "release:patch": "npm version patch && npm publish",
     "release:minor": "npm version minor && npm publish",
