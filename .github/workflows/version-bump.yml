@@ -134,20 +134,36 @@ jobs:
 
       - name: Commit changes
         run: |
+          echo "📝 Staging files..."
           git add package.json package-lock.json CHANGELOG.md
+          git status
+
+          echo "💾 Creating commit..."
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}"
+
+          echo "🏷️ Creating tag: ${{ steps.version.outputs.version_tag }}"
           git tag ${{ steps.version.outputs.version_tag }}
+
+          echo "📋 Verifying tag creation..."
+          git tag -l "${{ steps.version.outputs.version_tag }}"
+          git show ${{ steps.version.outputs.version_tag }} --no-patch --format="Tag: %D%nCommit: %H%nMessage: %s"
 
       - name: Push changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Configure git to use the token
+          echo "🔧 Configuring git remote..."
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
 
-          # Push changes
+          echo "📤 Pushing commit to main..."
           git push origin main
+
+          echo "📤 Pushing tag: ${{ steps.version.outputs.version_tag }}"
           git push origin ${{ steps.version.outputs.version_tag }}
+
+          echo "✅ Push completed successfully!"
+          echo "🔍 Verifying remote tags..."
+          git ls-remote --tags origin | grep "${{ steps.version.outputs.version_tag }}" || echo "⚠️ Tag not found in remote"
 
   notify:
     needs: bump-version
@@ -159,3 +175,7 @@ jobs:
           echo "✅ Version bumped successfully!"
           echo "🏷️ New tag will trigger release workflow"
           echo "📦 Package will be published to npm automatically"
+          echo ""
+          echo "🔍 Release workflow should be triggered by tag push"
+          echo "📋 Check the Actions tab for the 'Release and Publish' workflow"
+          echo "🌐 Release workflow trigger: on.push.tags: 'v*'"
