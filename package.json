@@ -1,0 +1,41 @@
+{
+  "name": "istanbul-middleware-ts",
+  "version": "1.0.0",
+  "description": "TypeScript version of Istanbul middleware for code coverage reporting",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test-server": "npm run build && node test/server.js",
+    "test-example": "npm run build && node test/example.js"
+  },
+  "keywords": [
+    "istanbul",
+    "coverage",
+    "middleware",
+    "typescript"
+  ],
+  "author": "Istanbul Middleware TS",
+  "license": "BSD-3-Clause",
+  "dependencies": {
+    "archiver": "^5.3.2",
+    "body-parser": "^1.20.2",
+    "express": "^4.18.2",
+    "istanbul-lib-coverage": "^3.2.2",
+    "istanbul-lib-report": "^3.0.1",
+    "istanbul-reports": "^3.1.6"
+  },
+  "devDependencies": {
+    "@types/archiver": "^5.3.4",
+    "@types/express": "^4.17.21",
+    "@types/istanbul-lib-coverage": "^2.0.6",
+    "@types/istanbul-lib-report": "^3.0.3",
+    "@types/istanbul-reports": "^3.0.4",
+    "@types/node": "^20.10.4",
+    "rimraf": "^5.0.5",
+    "typescript": "^5.3.3"
+  }
+}
