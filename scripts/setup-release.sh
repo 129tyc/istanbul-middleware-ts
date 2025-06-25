@@ -86,15 +86,19 @@ fi
 # Check package contents
 echo -e "${YELLOW}📋 Checking package contents...${NC}"
 npm pack --dry-run > /tmp/pack-output.txt 2>&1
-PACKAGE_SIZE=$(grep "unpacked size:" /tmp/pack-output.txt | awk '{print $3 $4}')
-FILE_COUNT=$(grep -E "^\d" /tmp/pack-output.txt | wc -l)
+PACKAGE_SIZE=$(grep "unpacked size:" /tmp/pack-output.txt | grep -o '[0-9.]\+ [a-zA-Z]\+')
+FILE_COUNT=$(grep "total files:" /tmp/pack-output.txt | grep -o '[0-9]\+')
 
-echo -e "${GREEN}✅ Package will contain $FILE_COUNT files ($PACKAGE_SIZE)${NC}"
+if [ -n "$FILE_COUNT" ] && [ -n "$PACKAGE_SIZE" ]; then
+    echo -e "${GREEN}✅ Package will contain $FILE_COUNT files ($PACKAGE_SIZE)${NC}"
+else
+    echo -e "${YELLOW}⚠️  Could not parse package information${NC}"
+fi
 
 # Show what will be published
 echo -e "${YELLOW}📄 Files that will be published:${NC}"
-npm pack --dry-run 2>/dev/null | grep -E "^\d" | head -10
-if [ $FILE_COUNT -gt 10 ]; then
+grep "npm notice.*\." /tmp/pack-output.txt | grep -v "Tarball" | head -10
+if [ -n "$FILE_COUNT" ] && [ "$FILE_COUNT" -gt 10 ]; then
     echo "... and $((FILE_COUNT - 10)) more files"
 fi
 
