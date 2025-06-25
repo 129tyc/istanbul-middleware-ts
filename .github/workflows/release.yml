@@ -6,6 +6,10 @@ on:
       - "v*" # Trigger when pushing tags starting with v, e.g. v1.0.0
   workflow_dispatch: # Allow manual trigger
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -80,33 +84,39 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "## Changes in ${{ steps.get_version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Features" >> $GITHUB_OUTPUT
+          echo "- Istanbul Middleware TypeScript implementation" >> $GITHUB_OUTPUT
+          echo "- Complete TypeScript support with type definitions" >> $GITHUB_OUTPUT
+          echo "- Express.js integration" >> $GITHUB_OUTPUT
+          echo "- Coverage reporting and download functionality" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Installation" >> $GITHUB_OUTPUT
+          echo "\`\`\`bash" >> $GITHUB_OUTPUT
+          echo "npm install istanbul-middleware-ts" >> $GITHUB_OUTPUT
+          echo "\`\`\`" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "### Usage" >> $GITHUB_OUTPUT
+          echo "\`\`\`typescript" >> $GITHUB_OUTPUT
+          echo "import { createHandler } from 'istanbul-middleware-ts';" >> $GITHUB_OUTPUT
+          echo "app.use('/coverage', createHandler());" >> $GITHUB_OUTPUT
+          echo "\`\`\`" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "For detailed documentation, see [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.get_version.outputs.VERSION }}
-          release_name: Release ${{ steps.get_version.outputs.VERSION }}
-          body: |
-            ## Changes in ${{ steps.get_version.outputs.VERSION }}
-
-            ### Features
-            - Istanbul Middleware TypeScript implementation
-            - Complete TypeScript support with type definitions
-            - Express.js integration
-            - Coverage reporting and download functionality
-
-            ### Installation
-            ```bash
-            npm install istanbul-middleware-ts
-            ```
-
-            ### Usage
-            ```typescript
-            import { createHandler } from 'istanbul-middleware-ts';
-            app.use('/coverage', createHandler());
-            ```
-
-            For detailed documentation, see [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: ${{ steps.release_notes.outputs.RELEASE_NOTES }}
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
