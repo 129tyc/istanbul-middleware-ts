@@ -99,26 +99,70 @@ echo -e "${YELLOW}🔢 Bumping version...${NC}"
 # First, run build to ensure everything is ready
 npm run build
 
+# Calculate new version
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+
 if [ "$choice" = "5" ]; then
     NEW_VERSION=$CUSTOM_VERSION
-    # Update version manually for custom versions
-    npm version $CUSTOM_VERSION --no-git-tag-version > /dev/null
 else
     if [ "$VERSION_TYPE" = "prerelease" ]; then
         read -p "Enter prerelease tag (default: beta): " PRERELEASE_TAG
         PRERELEASE_TAG=${PRERELEASE_TAG:-beta}
-        NEW_VERSION=$(npm version prerelease --preid=$PRERELEASE_TAG --no-git-tag-version 2>/dev/null)
+        # Calculate prerelease version manually to avoid script execution
+        NEW_VERSION=$(node -e "
+            const semver = require('semver');
+            const current = '$CURRENT_VERSION';
+            if (semver.prerelease(current)) {
+                console.log(semver.inc(current, 'prerelease', '$PRERELEASE_TAG'));
+            } else {
+                console.log(semver.inc(current, 'prerelease', '$PRERELEASE_TAG'));
+            }
+        " 2>/dev/null || echo "${CURRENT_VERSION}-${PRERELEASE_TAG}.0")
     else
-        NEW_VERSION=$(npm version $VERSION_TYPE --no-git-tag-version 2>/dev/null)
+        # Use node to calculate version increment
+        NEW_VERSION=$(node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            const version = pkg.version.split('.');
+            let major = parseInt(version[0]);
+            let minor = parseInt(version[1]);
+            let patch = parseInt(version[2]);
+            
+            if ('$VERSION_TYPE' === 'major') {
+                major++;
+                minor = 0;
+                patch = 0;
+            } else if ('$VERSION_TYPE' === 'minor') {
+                minor++;
+                patch = 0;
+            } else if ('$VERSION_TYPE' === 'patch') {
+                patch++;
+            }
+            
+            console.log(\`\${major}.\${minor}.\${patch}\`);
+        ")
     fi
 fi
 
-# Clean up version string (remove 'v' prefix if present)
-NEW_VERSION=${NEW_VERSION#v}
+# Update package.json manually to avoid running scripts
+node -e "
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+    pkg.version = '$NEW_VERSION';
+    fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+"
 
-# Verify version was set correctly
-if [ -z "$NEW_VERSION" ]; then
-    NEW_VERSION=$(node -p "require('./package.json').version")
+# Update package-lock.json if it exists
+if [ -f "package-lock.json" ]; then
+    node -e "
+        const fs = require('fs');
+        const pkg = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+        pkg.version = '$NEW_VERSION';
+        if (pkg.packages && pkg.packages['']) {
+            pkg.packages[''].version = '$NEW_VERSION';
+        }
+        fs.writeFileSync('package-lock.json', JSON.stringify(pkg, null, 2) + '\n');
+    "
 fi
 
 echo -e "${GREEN}✅ Version bumped to: $NEW_VERSION${NC}"
