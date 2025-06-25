@@ -15,13 +15,14 @@ const IS_EXTENDED = true;
  */
 export function createHandler(opts: HandlerOptions = {}): express.Application {
   const app = express();
+  const outputDir = opts.outputDir || path.join(process.cwd(), "output");
 
   // Configure body parser options
   const urlOptions = { extended: IS_EXTENDED, limit: FILE_SIZE_MAXIMUM };
   const jsonOptions = { limit: FILE_SIZE_MAXIMUM };
 
   // Serve static files from output directory
-  app.use("/", express.static(path.join(process.cwd(), "output")));
+  app.use("/", express.static(outputDir));
 
   // Configure body parsers
   app.use(bodyParser.urlencoded(urlOptions));
@@ -76,7 +77,7 @@ export function createHandler(opts: HandlerOptions = {}): express.Application {
 
       // Pipe archive data to the response
       archive.pipe(res);
-    });
+    }, outputDir);
   });
 
   // Merge client coverage posted from browser
@@ -89,7 +90,7 @@ export function createHandler(opts: HandlerOptions = {}): express.Application {
     }
 
     core.mergeClientCoverage(body);
-    core.generateCoverageReport();
+    core.generateCoverageReport(outputDir);
     res.json({ ok: true });
   });
 

@@ -54,7 +54,7 @@ export function mergeClientCoverage(obj: CoverageData): void {
 /**
  * Generate HTML coverage report
  */
-export function generateCoverageReport(): void {
+export function generateCoverageReport(customOutputDir?: string): void {
   const coverage = getCoverageObject();
 
   if (!(coverage && Object.keys(coverage).length > 0)) {
@@ -63,7 +63,7 @@ export function generateCoverageReport(): void {
 
   try {
     const coverageMap = libCoverage.createCoverageMap(coverage);
-    const outputDir = path.join(process.cwd(), "output");
+    const outputDir = customOutputDir || path.join(process.cwd(), "output");
 
     // Clean and recreate output directory
     if (fs.existsSync(outputDir)) {
@@ -100,7 +100,10 @@ export function generateCoverageReport(): void {
 /**
  * Create a downloadable package with coverage data and HTML reports
  */
-export function createDownloadPackage(callback: DownloadPackageCallback): void {
+export function createDownloadPackage(
+  callback: DownloadPackageCallback,
+  customOutputDir?: string
+): void {
   const coverageObject = getCoverageObject() || {};
 
   // Check if we have coverage data
@@ -113,7 +116,7 @@ export function createDownloadPackage(callback: DownloadPackageCallback): void {
       zlib: { level: 9 }, // Sets the compression level.
     });
 
-    const outputDir = path.join(process.cwd(), "output");
+    const outputDir = customOutputDir || path.join(process.cwd(), "output");
 
     // Ensure HTML report is generated
     if (
@@ -121,7 +124,7 @@ export function createDownloadPackage(callback: DownloadPackageCallback): void {
       !fs.existsSync(path.join(outputDir, "index.html"))
     ) {
       console.log("Generating HTML report for download...");
-      generateCoverageReport();
+      generateCoverageReport(customOutputDir);
     }
 
     // Add coverage.json to zip

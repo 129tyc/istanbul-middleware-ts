@@ -25,4 +25,5 @@ export interface DownloadPackageCallback {
 
 export interface HandlerOptions {
   resetOnGet?: boolean;
+  outputDir?: string;
 }

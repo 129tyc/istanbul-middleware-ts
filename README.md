@@ -97,16 +97,19 @@ import { mergeClientCoverage } from "istanbul-middleware-ts";
 mergeClientCoverage(clientCoverageData);
 ```
 
-### generateCoverageReport()
+### generateCoverageReport(outputDir?)
 
 ```typescript
 import { generateCoverageReport } from "istanbul-middleware-ts";
 
 // Generate HTML report in ./output directory
 generateCoverageReport();
+
+// Generate HTML report in custom directory
+generateCoverageReport("/tmp/my-reports");
 ```
 
-### createDownloadPackage(callback)
+### createDownloadPackage(callback, outputDir?)
 
 ```typescript
 import { createDownloadPackage } from "istanbul-middleware-ts";
@@ -120,6 +123,11 @@ createDownloadPackage((err, archive) => {
   // archive is a readable stream
   archive.pipe(response);
 });
+
+// Use custom output directory
+createDownloadPackage((err, archive) => {
+  // Handle response
+}, "/tmp/my-reports");
 ```
 
 ## Configuration Options
@@ -127,7 +135,42 @@ createDownloadPackage((err, archive) => {
 ```typescript
 interface HandlerOptions {
   resetOnGet?: boolean; // Allow GET requests to reset coverage (default: false)
+  outputDir?: string; // Custom output directory for reports (default: ./output)
 }
+```
+
+### Custom Output Directory
+
+You can specify a custom directory for coverage reports:
+
+```typescript
+import { createHandler } from "istanbul-middleware-ts";
+
+app.use(
+  "/coverage",
+  createHandler({
+    resetOnGet: true,
+    outputDir: "/tmp/my-coverage-reports", // Custom output directory
+  })
+);
+```
+
+The output directory will be used for:
+
+- HTML coverage reports
+- Static file serving
+- Download packages
+
+### Using with Environment Variables
+
+For the test server, you can set the output directory via environment variable:
+
+```bash
+# Use custom output directory
+OUTPUT_DIR=/tmp/coverage npm run test-server
+
+# Use default output directory
+npm run test-server
 ```
 
 ## TypeScript Types
