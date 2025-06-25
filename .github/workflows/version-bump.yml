@@ -18,6 +18,10 @@ on:
         required: false
         default: "beta"
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   bump-version:
     runs-on: ubuntu-latest
@@ -46,13 +50,70 @@ jobs:
       - name: Bump version
         id: version
         run: |
+          # Get current version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+
+          # Calculate new version manually to avoid npm version scripts
           if [ "${{ github.event.inputs.version_type }}" = "prerelease" ]; then
-            NEW_VERSION=$(npm version prerelease --preid=${{ github.event.inputs.prerelease_tag }} --no-git-tag-version)
+            # For prerelease, use semver logic
+            NEW_VERSION=$(node -e "
+              const semver = require('semver');
+              const current = '$CURRENT_VERSION';
+              const tag = '${{ github.event.inputs.prerelease_tag }}';
+              if (semver.prerelease(current)) {
+                console.log(semver.inc(current, 'prerelease', tag));
+              } else {
+                console.log(semver.inc(current, 'prerelease', tag));
+              }
+            " 2>/dev/null || echo "${CURRENT_VERSION}-${{ github.event.inputs.prerelease_tag }}.0")
           else
-            NEW_VERSION=$(npm version ${{ github.event.inputs.version_type }} --no-git-tag-version)
+            # For regular versions, use manual calculation
+            NEW_VERSION=$(node -e "
+              const version = '$CURRENT_VERSION'.split('.');
+              let major = parseInt(version[0]);
+              let minor = parseInt(version[1]);
+              let patch = parseInt(version[2]);
+              
+              if ('${{ github.event.inputs.version_type }}' === 'major') {
+                major++;
+                minor = 0;
+                patch = 0;
+              } else if ('${{ github.event.inputs.version_type }}' === 'minor') {
+                minor++;
+                patch = 0;
+              } else if ('${{ github.event.inputs.version_type }}' === 'patch') {
+                patch++;
+              }
+              
+              console.log(\`\${major}.\${minor}.\${patch}\`);
+            ")
           fi
+
+          echo "New version: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "version_tag=v${NEW_VERSION#v}" >> $GITHUB_OUTPUT
+          echo "version_tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Update package.json manually
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '$NEW_VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          # Update package-lock.json if it exists
+          if [ -f package-lock.json ]; then
+            node -e "
+              const fs = require('fs');
+              const pkg = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+              pkg.version = '$NEW_VERSION';
+              if (pkg.packages && pkg.packages['']) {
+                pkg.packages[''].version = '$NEW_VERSION';
+              }
+              fs.writeFileSync('package-lock.json', JSON.stringify(pkg, null, 2) + '\n');
+            "
+          fi
 
       - name: Update CHANGELOG
         run: |
@@ -78,7 +139,13 @@ jobs:
           git tag ${{ steps.version.outputs.version_tag }}
 
       - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Configure git to use the token
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+
+          # Push changes
           git push origin main
           git push origin ${{ steps.version.outputs.version_tag }}
 
