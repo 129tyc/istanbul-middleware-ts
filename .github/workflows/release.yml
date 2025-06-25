@@ -87,27 +87,50 @@ jobs:
       - name: Generate release notes
         id: release_notes
         run: |
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          CURRENT_TAG=${{ steps.get_version.outputs.VERSION }}
+
           echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
-          echo "## Changes in ${{ steps.get_version.outputs.VERSION }}" >> $GITHUB_OUTPUT
+          echo "## Release $CURRENT_TAG" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
-          echo "### Features" >> $GITHUB_OUTPUT
-          echo "- Istanbul Middleware TypeScript implementation" >> $GITHUB_OUTPUT
-          echo "- Complete TypeScript support with type definitions" >> $GITHUB_OUTPUT
-          echo "- Express.js integration" >> $GITHUB_OUTPUT
-          echo "- Coverage reporting and download functionality" >> $GITHUB_OUTPUT
+
+          # Generate changelog from commits
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "### What's Changed" >> $GITHUB_OUTPUT
+            echo "" >> $GITHUB_OUTPUT
+            
+            # Get commits between tags, format them nicely
+            git log --pretty=format:"- %s" "$PREVIOUS_TAG"..HEAD | while read line; do
+              # Skip merge commits and version bump commits
+              if [[ ! "$line" =~ ^-\ Merge\ pull\ request ]] && [[ ! "$line" =~ ^-\ Bump\ version ]] && [[ ! "$line" =~ ^-\ chore\(release\) ]]; then
+                echo "$line" >> $GITHUB_OUTPUT
+              fi
+            done
+            
+            echo "" >> $GITHUB_OUTPUT
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$CURRENT_TAG" >> $GITHUB_OUTPUT
+          else
+            echo "### Features" >> $GITHUB_OUTPUT
+            echo "- Istanbul Middleware TypeScript implementation" >> $GITHUB_OUTPUT
+            echo "- Complete TypeScript support with type definitions" >> $GITHUB_OUTPUT
+            echo "- Express.js integration" >> $GITHUB_OUTPUT
+            echo "- Coverage reporting and download functionality" >> $GITHUB_OUTPUT
+          fi
+
           echo "" >> $GITHUB_OUTPUT
           echo "### Installation" >> $GITHUB_OUTPUT
           echo "\`\`\`bash" >> $GITHUB_OUTPUT
           echo "npm install istanbul-middleware-ts" >> $GITHUB_OUTPUT
           echo "\`\`\`" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
-          echo "### Usage" >> $GITHUB_OUTPUT
+          echo "### Quick Start" >> $GITHUB_OUTPUT
           echo "\`\`\`typescript" >> $GITHUB_OUTPUT
           echo "import { createHandler } from 'istanbul-middleware-ts';" >> $GITHUB_OUTPUT
           echo "app.use('/coverage', createHandler());" >> $GITHUB_OUTPUT
           echo "\`\`\`" >> $GITHUB_OUTPUT
           echo "" >> $GITHUB_OUTPUT
-          echo "For detailed documentation, see [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)" >> $GITHUB_OUTPUT
+          echo "📖 For detailed documentation, see [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
@@ -118,5 +141,7 @@ jobs:
           body: ${{ steps.release_notes.outputs.RELEASE_NOTES }}
           draft: false
           prerelease: false
+          generate_release_notes: true
+          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
