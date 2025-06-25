@@ -42,6 +42,21 @@ npm test --if-present
 
 # Test server
 echo -e "${YELLOW}🌐 Testing server...${NC}"
+
+# Function to cleanup server processes
+cleanup_server() {
+    echo "Cleaning up server processes..."
+    # Kill any node processes running test-server
+    pkill -f "node test/server.js" 2>/dev/null || true
+    pkill -f "test-server" 2>/dev/null || true
+    # Free up port 3000 if it's occupied
+    lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+    sleep 1
+}
+
+# Cleanup any existing server processes first
+cleanup_server
+
 # Use gtimeout on macOS or timeout on Linux
 if command -v gtimeout >/dev/null 2>&1; then
     gtimeout 10s npm run test-server || true
@@ -49,10 +64,42 @@ elif command -v timeout >/dev/null 2>&1; then
     timeout 10s npm run test-server || true
 else
     # Fallback: start server in background and kill after 10 seconds
-    npm run test-server &
+    echo "Starting server in background..."
+    
+    # Start server with explicit process group
+    setsid npm run test-server &
     SERVER_PID=$!
-    sleep 10
-    kill $SERVER_PID 2>/dev/null || true
+    echo "Server started with PID: $SERVER_PID"
+    
+    # Wait for server to start
+    sleep 3
+    
+    # Test if server is responding
+    if curl -s http://localhost:3000/health >/dev/null 2>&1; then
+        echo "✅ Server is responding"
+    else
+        echo "⚠️ Server may not be responding, but continuing..."
+    fi
+    
+    sleep 7
+    echo "Stopping server..."
+    
+    # Kill the entire process group
+    if kill -0 $SERVER_PID 2>/dev/null; then
+        # Kill process group (negative PID)
+        kill -TERM -$SERVER_PID 2>/dev/null || true
+        sleep 2
+        # Force kill if still running
+        if kill -0 $SERVER_PID 2>/dev/null; then
+            kill -KILL -$SERVER_PID 2>/dev/null || true
+        fi
+        echo "Server process group terminated"
+    else
+        echo "Server already stopped"
+    fi
+    
+    # Final cleanup
+    cleanup_server
     echo "Server test completed"
 fi
 
