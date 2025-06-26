@@ -79,6 +79,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch full history for proper tag comparison
 
       - name: Get tag version
         id: get_version
@@ -87,61 +89,62 @@ jobs:
       - name: Generate release notes
         id: release_notes
         run: |
-          # Get the previous tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
           CURRENT_TAG=${{ steps.get_version.outputs.VERSION }}
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
 
-          echo "RELEASE_NOTES<<EOF" >> $GITHUB_OUTPUT
-          echo "## Release $CURRENT_TAG" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
+          # Create release notes file
+          cat > release_notes.md << 'EOF'
+          ## 🚀 Release $CURRENT_TAG
 
-          # Generate changelog from commits
+          ### 📦 Installation
+          ```bash
+          npm install istanbul-middleware-ts
+          ```
+
+          ### 🔧 Quick Start
+          ```typescript
+          import { createHandler } from 'istanbul-middleware-ts';
+          app.use('/coverage', createHandler());
+          ```
+
+          ### 📋 What's Changed
+          EOF
+
+          # Add commit messages between tags
           if [ -n "$PREVIOUS_TAG" ]; then
-            echo "### What's Changed" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
+            echo "Generating changelog from $PREVIOUS_TAG to $CURRENT_TAG"
+            git log --pretty=format:"- %s (%an)" "$PREVIOUS_TAG"..HEAD \
+              | grep -v "Merge pull request" \
+              | grep -v "Bump version" \
+              | grep -v "chore(release)" \
+              | head -20 >> release_notes.md
             
-            # Get commits between tags, format them nicely
-            git log --pretty=format:"- %s" "$PREVIOUS_TAG"..HEAD | while read line; do
-              # Skip merge commits and version bump commits
-              if [[ ! "$line" =~ ^-\ Merge\ pull\ request ]] && [[ ! "$line" =~ ^-\ Bump\ version ]] && [[ ! "$line" =~ ^-\ chore\(release\) ]]; then
-                echo "$line" >> $GITHUB_OUTPUT
-              fi
-            done
-            
-            echo "" >> $GITHUB_OUTPUT
-            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$CURRENT_TAG" >> $GITHUB_OUTPUT
+            echo "" >> release_notes.md
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$CURRENT_TAG" >> release_notes.md
           else
-            echo "### Features" >> $GITHUB_OUTPUT
-            echo "- Istanbul Middleware TypeScript implementation" >> $GITHUB_OUTPUT
-            echo "- Complete TypeScript support with type definitions" >> $GITHUB_OUTPUT
-            echo "- Express.js integration" >> $GITHUB_OUTPUT
-            echo "- Coverage reporting and download functionality" >> $GITHUB_OUTPUT
+            echo "- Initial release with Istanbul coverage middleware" >> release_notes.md
+            echo "- TypeScript support with full type definitions" >> release_notes.md
+            echo "- Express.js integration" >> release_notes.md
+            echo "- Coverage reporting and download functionality" >> release_notes.md
           fi
 
-          echo "" >> $GITHUB_OUTPUT
-          echo "### Installation" >> $GITHUB_OUTPUT
-          echo "\`\`\`bash" >> $GITHUB_OUTPUT
-          echo "npm install istanbul-middleware-ts" >> $GITHUB_OUTPUT
-          echo "\`\`\`" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "### Quick Start" >> $GITHUB_OUTPUT
-          echo "\`\`\`typescript" >> $GITHUB_OUTPUT
-          echo "import { createHandler } from 'istanbul-middleware-ts';" >> $GITHUB_OUTPUT
-          echo "app.use('/coverage', createHandler());" >> $GITHUB_OUTPUT
-          echo "\`\`\`" >> $GITHUB_OUTPUT
-          echo "" >> $GITHUB_OUTPUT
-          echo "📖 For detailed documentation, see [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "" >> release_notes.md
+          echo "📖 **Documentation**: [README.md](https://github.com/${{ github.repository }}/blob/main/README.md)" >> release_notes.md
+
+          # Set output
+          {
+            echo "RELEASE_NOTES<<EOF"
+            cat release_notes.md
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.get_version.outputs.VERSION }}
-          name: Release ${{ steps.get_version.outputs.VERSION }}
+          name: "Release ${{ steps.get_version.outputs.VERSION }}"
           body: ${{ steps.release_notes.outputs.RELEASE_NOTES }}
           draft: false
           prerelease: false
-          generate_release_notes: true
-          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
