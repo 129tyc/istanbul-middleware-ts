@@ -68,6 +68,18 @@ Downloads a ZIP package containing:
 - `coverage.json` - Raw coverage data
 - `html/` - Complete HTML coverage report
 
+### GET /lcov
+
+Downloads the coverage report in LCOV format.
+
+### GET /diff
+
+Shows differential coverage report comparing against a target branch/commit. Requires `enableDiffCoverage: true` and `diff_cover` to be installed.
+
+### GET /diff/info
+
+Returns git diff information including changed files and diff summary.
+
 ## Core Functions
 
 ### getCoverageObject()
@@ -136,6 +148,8 @@ createDownloadPackage((err, archive) => {
 interface HandlerOptions {
   resetOnGet?: boolean; // Allow GET requests to reset coverage (default: false)
   outputDir?: string; // Custom output directory for reports (default: ./output)
+  diffTarget?: string; // Git diff target (branch/commit/tag) or diff file path - if set, enables differential coverage
+  diffCoverCommand?: string; // Custom diff-cover command path (default: "diff-cover")
 }
 ```
 
@@ -172,6 +186,122 @@ OUTPUT_DIR=/tmp/coverage npm run test-server
 # Use default output directory
 npm run test-server
 ```
+
+### Differential Coverage
+
+Enable differential coverage by setting a diffTarget (branch, commit, tag, or diff file):
+
+```typescript
+import { createHandler } from "istanbul-middleware-ts";
+
+// createHandler is now async for validation
+async function setupCoverage() {
+  const coverageHandler = await createHandler({
+    resetOnGet: true,
+    diffTarget: "main", // Compare against main branch - this enables differential coverage
+  });
+
+  app.use("/coverage", coverageHandler);
+}
+
+setupCoverage();
+```
+
+**Prerequisites for differential coverage:**
+
+1. Install `diff_cover`: `pip install diff_cover`
+2. Ensure you're in a git repository
+3. Have some changes compared to the target branch
+
+**Custom diff-cover command path:**
+
+If you need to use a custom path for the `diff-cover` command (e.g., using virtual environments, conda, or custom installations):
+
+```typescript
+async function setupCoverage() {
+  const coverageHandler = await createHandler({
+    diffTarget: "main",
+    diffCoverCommand: "/path/to/venv/bin/diff-cover", // Custom command path
+  });
+  app.use("/coverage", coverageHandler);
+}
+
+// Or using conda environment
+async function setupWithConda() {
+  const coverageHandler = await createHandler({
+    diffTarget: "main",
+    diffCoverCommand: "conda run -n myenv diff-cover", // Using conda
+  });
+  app.use("/coverage", coverageHandler);
+}
+
+// Or using pipx
+async function setupWithPipx() {
+  const coverageHandler = await createHandler({
+    diffTarget: "main",
+    diffCoverCommand: "pipx run diff-cover", // Using pipx
+  });
+  app.use("/coverage", coverageHandler);
+}
+```
+
+**Environment variables for test server:**
+
+```bash
+# Enable differential coverage with git branch
+DIFF_TARGET=main npm run test-server
+
+# Enable differential coverage with diff file
+DIFF_TARGET=/path/to/changes.diff npm run test-server
+
+# Custom output directory with diff coverage
+OUTPUT_DIR=/tmp/coverage DIFF_TARGET=develop npm run test-server
+```
+
+**Available endpoints:**
+
+- `/coverage/diff` - View differential coverage HTML report
+- `/coverage/diff/info` - Get git diff information
+- `/coverage/lcov` - Download LCOV format report
+
+**Using differential coverage:**
+
+```bash
+# View differential coverage report
+curl "http://localhost:3000/coverage/diff"
+
+# Get diff information
+curl "http://localhost:3000/coverage/diff/info"
+```
+
+**Configuration:**
+
+The diff target is configured when starting the server, not in individual requests:
+
+```typescript
+// Git branch/commit/tag
+async function setupWithGitRef() {
+  const handler = await createHandler({
+    diffTarget: "main", // Git branch/commit/tag - enables differential coverage
+  });
+  app.use("/coverage", handler);
+}
+
+// Or use a diff file
+async function setupWithDiffFile() {
+  const handler = await createHandler({
+    diffTarget: "/path/to/changes.diff", // Pre-existing diff file - enables differential coverage
+  });
+  app.use("/coverage", handler);
+}
+```
+
+**Diff file support:**
+
+- The system automatically detects if `diffTarget` is a file path by checking file existence
+- Diff files must exist on the server (cannot be uploaded via HTTP)
+- Diff files should be in standard git diff format
+- Supports both relative and absolute file paths
 
 ## TypeScript Types
 

@@ -1,6 +1,7 @@
 import express from "express";
 import * as bodyParser from "body-parser";
 import * as path from "path";
+import * as fs from "fs";
 import * as core from "./core";
 import { HandlerOptions } from "./types";
 
@@ -13,9 +14,45 @@ const IS_EXTENDED = true;
 /**
  * Create the main handler with coverage endpoints
  */
-export function createHandler(opts: HandlerOptions = {}): express.Application {
+export async function createHandler(
+  opts: HandlerOptions = {}
+): Promise<express.Application> {
   const app = express();
   const outputDir = opts.outputDir || path.join(process.cwd(), "output");
+  const diffTarget = opts.diffTarget;
+  let diffValidation: {
+    isValid: boolean;
+    type: string;
+    error?: string;
+  } | null = null;
+
+  // Validate diffTarget (handles all cases including undefined/null)
+  try {
+    diffValidation = diffTarget
+      ? await core.validateDiffTarget(diffTarget)
+      : { isValid: false, type: "none" };
+
+    if (diffValidation.isValid) {
+      console.log(
+        `Differential coverage enabled with ${diffValidation.type}: ${diffTarget}`
+      );
+    } else if (diffTarget) {
+      // Only show warning if diffTarget was provided but invalid
+      console.warn(
+        `Warning: Invalid diffTarget '${diffTarget}': ${diffValidation.error}`
+      );
+      console.warn("Differential coverage endpoints will be disabled.");
+    }
+    // If no diffTarget provided, silently disable (no warning needed)
+  } catch (err) {
+    console.warn(
+      `Warning: Failed to validate diffTarget '${diffTarget}': ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+    console.warn("Differential coverage endpoints will be disabled.");
+    diffValidation = { isValid: false, type: "error" };
+  }
 
   // Configure body parser options
   const urlOptions = { extended: IS_EXTENDED, limit: FILE_SIZE_MAXIMUM };
@@ -23,6 +60,22 @@ export function createHandler(opts: HandlerOptions = {}): express.Application {
 
   // Serve static files from output directory
   app.use("/", express.static(outputDir));
+
+  // Serve diff-coverage.html at /diff route if diffTarget is valid
+  if (diffValidation?.isValid) {
+    app.get("/diff", (req: express.Request, res: express.Response) => {
+      const diffHtmlPath = path.join(outputDir, "diff-coverage.html");
+
+      if (!fs.existsSync(diffHtmlPath)) {
+        return res.status(404).json({
+          error:
+            "Differential coverage report not found. Please POST coverage data to /merge first.",
+        });
+      }
+
+      res.sendFile(diffHtmlPath);
+    });
+  }
 
   // Configure body parsers
   app.use(bodyParser.urlencoded(urlOptions));
@@ -81,7 +134,7 @@ export function createHandler(opts: HandlerOptions = {}): express.Application {
   });
 
   // Merge client coverage posted from browser
-  app.post("/merge", (req: express.Request, res: express.Response) => {
+  app.post("/merge", async (req: express.Request, res: express.Response) => {
     const body = req.body;
     if (!(body && typeof body === "object")) {
       return res
@@ -89,9 +142,119 @@ export function createHandler(opts: HandlerOptions = {}): express.Application {
         .send("Please post an object with content-type: application/json");
     }
 
-    core.mergeClientCoverage(body);
-    core.generateCoverageReport(outputDir);
-    res.json({ ok: true });
+    try {
+      core.mergeClientCoverage(body);
+      core.generateCoverageReport(outputDir);
+
+      // Generate LCOV report (only if coverage data exists)
+      try {
+        core.generateLcovReport(outputDir);
+      } catch (lcovErr) {
+        // LCOV generation can fail if no coverage data, which is acceptable
+        console.debug(
+          "LCOV generation skipped:",
+          lcovErr instanceof Error ? lcovErr.message : "No coverage data"
+        );
+      }
+
+      // Generate differential coverage if diffTarget is valid
+      if (diffValidation?.isValid && diffTarget) {
+        try {
+          // Generate diff info and cache it
+          const diffInfo = await core.getGitDiffInfo(diffTarget);
+          const diffInfoPath = path.join(outputDir, "diff-info.json");
+          fs.writeFileSync(
+            diffInfoPath,
+            JSON.stringify(
+              {
+                target: diffTarget,
+                targetType: diffInfo.targetType,
+                changedFiles: diffInfo.changedFiles,
+                diffSummary: diffInfo.diffSummary,
+                generatedAt: new Date().toISOString(),
+              },
+              null,
+              2
+            )
+          );
+
+          // Generate differential coverage report
+          await core.generateDiffCoverageReport({
+            target: diffTarget,
+            outputDir: outputDir,
+            diffCoverCommand: opts.diffCoverCommand,
+          });
+        } catch (diffErr) {
+          console.warn("Failed to generate differential coverage:", diffErr);
+        }
+      }
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Error in merge endpoint:", err);
+      res.status(500).json({
+        ok: false,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  });
+
+  // Generate LCOV format report
+  app.get("/lcov", (req: express.Request, res: express.Response) => {
+    try {
+      const lcovFile = core.generateLcovReport(outputDir);
+      res.download(lcovFile, "lcov.info");
+    } catch (err) {
+      console.error("Error generating LCOV report:", err);
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : "Failed to generate LCOV report",
+      });
+    }
+  });
+
+  // Differential coverage info endpoint
+  app.get("/diff/info", async (req: express.Request, res: express.Response) => {
+    if (!diffValidation?.isValid || !diffTarget) {
+      return res.status(400).json({
+        error: diffTarget
+          ? `Invalid diffTarget: ${
+              diffValidation?.error || "Validation failed"
+            }`
+          : "Differential coverage target not configured. Set diffTarget in options.",
+      });
+    }
+
+    try {
+      // Check if diff info cache exists
+      const diffInfoPath = path.join(outputDir, "diff-info.json");
+
+      if (fs.existsSync(diffInfoPath)) {
+        // Return cached diff info
+        const cachedInfo = JSON.parse(fs.readFileSync(diffInfoPath, "utf8"));
+        res.json({
+          ...cachedInfo,
+          enableDiffCoverage: !!diffTarget,
+        });
+      } else {
+        // Fallback: generate diff info on demand
+        const diffInfo = await core.getGitDiffInfo(diffTarget);
+        res.json({
+          target: diffTarget,
+          targetType: diffInfo.targetType,
+          changedFiles: diffInfo.changedFiles,
+          diffSummary: diffInfo.diffSummary,
+          enableDiffCoverage: !!diffTarget,
+          note: "This info was generated on demand. POST to /merge to cache it.",
+        });
+      }
+    } catch (err) {
+      console.error("Error getting diff info:", err);
+      res.status(500).json({
+        error:
+          err instanceof Error ? err.message : "Failed to get diff information",
+      });
+    }
   });
 
   return app;

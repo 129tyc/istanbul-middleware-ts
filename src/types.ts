@@ -2,23 +2,6 @@ export interface CoverageData {
   [filePath: string]: any;
 }
 
-export interface CoverageReportOptions {
-  skipEmpty?: boolean;
-  skipFull?: boolean;
-}
-
-export interface ReportContext {
-  dir: string;
-  coverageMap: any;
-  defaultSummarizer: string;
-  watermarks: {
-    statements: [number, number];
-    functions: [number, number];
-    branches: [number, number];
-    lines: [number, number];
-  };
-}
-
 export interface DownloadPackageCallback {
   (error: Error | null, archive?: any): void;
 }
@@ -26,4 +9,13 @@ export interface DownloadPackageCallback {
 export interface HandlerOptions {
   resetOnGet?: boolean;
   outputDir?: string;
+  diffTarget?: string; // Git diff target (branch/commit/tag) or diff file path - if set, enables differential coverage
+  diffCoverCommand?: string; // Custom diff-cover command path (default: "diff-cover")
+}
+
+export interface DiffCoverageOptions {
+  target: string; // Git diff target (branch/commit/tag) or diff file path
+  outputDir: string; // Output directory for reports
+  lcovFile?: string; // Custom lcov file path
+  diffCoverCommand?: string; // Custom diff-cover command path
 }

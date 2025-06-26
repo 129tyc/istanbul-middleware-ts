@@ -18,10 +18,4 @@ export {
 export { createHandler } from "./handlers";
 
 // Export types
-export {
-  CoverageData,
-  CoverageReportOptions,
-  ReportContext,
-  DownloadPackageCallback,
-  HandlerOptions,
-} from "./types";
+export { CoverageData, DownloadPackageCallback, HandlerOptions } from "./types";

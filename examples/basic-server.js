@@ -1,20 +1,23 @@
 const express = require("express");
-const { createHandler } = require("../dist/index"); // Use compiled files
+const { createHandler } = require("../dist/index");
 
 /**
  * Test server with Istanbul coverage middleware
  */
 const testServer = {
-  start: function (port, outputDir) {
+  start: async function (port, outputDir, diffTarget, command) {
     const app = express();
 
     console.log("Turn on coverage reporting at /coverage");
-    // Create coverage handler and mount to /coverage path
-    const coverageHandler = createHandler({
-      resetOnGet: true,
-      outputDir: outputDir,
+    // Use istanbul-middleware-ts with new modern coverage storage
+    // This version uses an internal CoverageStore class instead of global.__coverage__
+    // which avoids conflicts with Jest and other testing frameworks
+    const istanbulHandler = await createHandler({
+      resetOnGet: false,
+      diffTarget: diffTarget,
+      diffCoverCommand: command,
     });
-    app.use("/coverage", coverageHandler);
+    app.use("/coverage", istanbulHandler);
 
     // Basic routes
     app.get("/", (req, res) => {
@@ -26,6 +29,13 @@ const testServer = {
           object: "/coverage/object",
           download: "/coverage/download",
           merge: "/coverage/merge",
+          lcov: "/coverage/lcov",
+          diff: "/coverage/diff",
+          diffInfo: "/coverage/diff/info",
+        },
+        config: {
+          outputDir: outputDir || "default",
+          diffTarget: diffTarget || "not set",
         },
       });
     });
@@ -56,8 +66,21 @@ const testServer = {
         `  - http://localhost:${port}/coverage/download - Download coverage package`
       );
       console.log(
+        `  - http://localhost:${port}/coverage/lcov - Download LCOV report`
+      );
+      console.log(
         `  - POST http://localhost:${port}/coverage/merge - Merge client coverage`
       );
+
+      if (diffTarget) {
+        console.log(
+          `  - http://localhost:${port}/coverage/diff - Differential coverage report`
+        );
+        console.log(
+          `  - http://localhost:${port}/coverage/diff/info - Git diff information`
+        );
+        console.log(`  - Diff target: ${diffTarget}`);
+      }
       console.log(`Health check: http://localhost:${port}/health`);
     });
 
@@ -71,5 +94,11 @@ module.exports = testServer;
 if (require.main === module) {
   const port = process.env.PORT || 3000;
   const outputDir = process.env.OUTPUT_DIR; // Optional custom output directory
-  testServer.start(port, outputDir);
+  const diffTarget = process.env.DIFF_TARGET; // Optional git diff target (branch or diff file path)
+  const command = process.env.COMMAND; // Optional custom diff-cover command
+
+  testServer.start(port, outputDir, diffTarget, command).catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  });
 }
