@@ -18,7 +18,13 @@ export async function createHandler(
   opts: HandlerOptions = {}
 ): Promise<express.Application> {
   const app = express();
-  const outputDir = opts.outputDir || path.join(process.cwd(), "output");
+
+  // Preprocess outputDir to absolute path to prevent issues during internal usage
+  const rawOutputDir = opts.outputDir || path.join(process.cwd(), "output");
+  const outputDir = path.isAbsolute(rawOutputDir)
+    ? rawOutputDir
+    : path.resolve(process.cwd(), rawOutputDir);
+
   const diffTarget = opts.diffTarget;
   let diffValidation: {
     isValid: boolean;

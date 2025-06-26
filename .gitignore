@@ -9,6 +9,7 @@ dist/
 build/
 
 # Coverage output
+temp-test-output/
 output/
 coverage/
 *.lcov
