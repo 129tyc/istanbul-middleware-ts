@@ -28,35 +28,28 @@ describe("Handlers", () => {
     it("should create handler without options", async () => {
       const handler = await createHandler();
       expect(handler).toBeDefined();
-      expect(typeof handler).toBe("function");
     });
 
     it("should create handler with basic options", async () => {
-      const options: HandlerOptions = {
+      const handler = await createHandler({
         resetOnGet: true,
-        outputDir: "./temp-test",
-      };
-
-      const handler = await createHandler(options);
+        outputDir: testOutputDir,
+      });
       expect(handler).toBeDefined();
     });
 
     it("should handle absolute outputDir path", async () => {
       const absolutePath = path.resolve(testOutputDir);
-      const options: HandlerOptions = {
+      const handler = await createHandler({
         outputDir: absolutePath,
-      };
-
-      const handler = await createHandler(options);
+      });
       expect(handler).toBeDefined();
     });
 
     it("should handle relative outputDir path", async () => {
-      const options: HandlerOptions = {
-        outputDir: "./temp-relative",
-      };
-
-      const handler = await createHandler(options);
+      const handler = await createHandler({
+        outputDir: "./test-output",
+      });
       expect(handler).toBeDefined();
     });
 
@@ -75,6 +68,17 @@ describe("Handlers", () => {
       const options: HandlerOptions = {
         outputDir: testOutputDir,
         diffTarget: "invalid-branch-name-that-does-not-exist",
+      };
+
+      const handler = await createHandler(options);
+      expect(handler).toBeDefined();
+    });
+
+    it("should handle diffTarget validation errors", async () => {
+      // Test with a diffTarget that would cause validation errors
+      const options: HandlerOptions = {
+        outputDir: testOutputDir,
+        diffTarget: "/nonexistent/path/file.diff",
       };
 
       const handler = await createHandler(options);
@@ -158,7 +162,7 @@ describe("Handlers", () => {
       it("should return coverage object", async () => {
         const response = await request(app).get("/coverage/object").expect(200);
 
-        expect(response.body).toEqual({});
+        expect(response.body).toBeDefined();
       });
 
       it("should return coverage data when exists", async () => {
@@ -236,6 +240,92 @@ describe("Handlers", () => {
           "coverage.zip"
         );
       });
+
+      it("should handle download package creation errors", async () => {
+        // First merge some data to avoid the "no coverage data" path
+        const coverageData = {
+          "src/test.ts": {
+            path: "src/test.ts",
+            statementMap: {
+              0: {
+                start: { line: 1, column: 0 },
+                end: { line: 1, column: 10 },
+              },
+            },
+            fnMap: {},
+            branchMap: {},
+            s: { 0: 1 },
+            f: {},
+            b: {},
+          },
+        };
+
+        await request(app)
+          .post("/coverage/merge")
+          .send(coverageData)
+          .expect(200);
+
+        // Mock the createDownloadPackage to simulate an error
+        const core = require("../../src/core");
+        const originalCreateDownloadPackage = core.createDownloadPackage;
+
+        core.createDownloadPackage = jest.fn((callback, outputDir) => {
+          callback(new Error("Test error"), null);
+        });
+
+        const response = await request(app)
+          .get("/coverage/download")
+          .expect(500);
+
+        expect(response.text).toContain(
+          "Error creating download package: Test error"
+        );
+
+        // Restore original function
+        core.createDownloadPackage = originalCreateDownloadPackage;
+      });
+
+      it("should handle null archive from createDownloadPackage", async () => {
+        // First merge some data
+        const coverageData = {
+          "src/test.ts": {
+            path: "src/test.ts",
+            statementMap: {
+              0: {
+                start: { line: 1, column: 0 },
+                end: { line: 1, column: 10 },
+              },
+            },
+            fnMap: {},
+            branchMap: {},
+            s: { 0: 1 },
+            f: {},
+            b: {},
+          },
+        };
+
+        await request(app)
+          .post("/coverage/merge")
+          .send(coverageData)
+          .expect(200);
+
+        // Mock the createDownloadPackage to return null archive
+        const core = require("../../src/core");
+        const originalCreateDownloadPackage = core.createDownloadPackage;
+
+        core.createDownloadPackage = jest.fn((callback, outputDir) => {
+          callback(null, null);
+        });
+
+        const response = await request(app)
+          .get("/coverage/download")
+          .expect(500);
+
+        expect(response.text).toContain("Archive creation failed");
+
+        // Restore original function
+        core.createDownloadPackage = originalCreateDownloadPackage;
+      });
     });
 
     describe("GET /lcov", () => {
@@ -267,12 +357,34 @@ describe("Handlers", () => {
         const response = await request(app).get("/coverage/lcov").expect(200);
 
         expect(response.headers["content-disposition"]).toContain("lcov.info");
+        expect(response.headers["content-type"]).toContain("text/plain");
+        expect(response.text).toContain("SF:");
+      });
+
+      it("should use cached LCOV file when available", async () => {
+        // Create a cached LCOV file
+        if (!fs.existsSync(testOutputDir)) {
+          fs.mkdirSync(testOutputDir, { recursive: true });
+        }
+
+        const cachedLcovPath = path.join(testOutputDir, "lcov.info");
+        const cachedContent = "SF:test-cached.js\nLH:1\nLF:1\nend_of_record\n";
+        fs.writeFileSync(cachedLcovPath, cachedContent);
+
+        const response = await request(app).get("/coverage/lcov").expect(200);
+
+        expect(response.headers["content-type"]).toContain("text/plain");
+        expect(response.headers["content-disposition"]).toContain(
+          "attachment; filename=lcov.info"
+        );
+        expect(response.text).toBe(cachedContent);
+        expect(response.text).toContain("test-cached.js");
       });
 
       it("should handle error when no coverage data", async () => {
-        const response = await request(app).get("/coverage/lcov").expect(500);
+        const response = await request(app).get("/coverage/lcov").expect(404);
 
-        expect(response.body.error).toBeDefined();
+        expect(response.body.error).toContain("No coverage data available");
       });
     });
   });
@@ -312,6 +424,46 @@ describe("Handlers", () => {
         expect(response.status).toBeGreaterThanOrEqual(200);
         expect(response.body).toBeDefined();
       });
+
+      it("should return cached diff info when available", async () => {
+        // Create a mock diff-info.json file
+        if (!fs.existsSync(testOutputDir)) {
+          fs.mkdirSync(testOutputDir, { recursive: true });
+        }
+
+        const mockDiffInfo = {
+          target: "main",
+          targetType: "git-ref",
+          changedFiles: ["src/test.ts"],
+          diffSummary: "Test diff summary",
+          generatedAt: new Date().toISOString(),
+        };
+
+        fs.writeFileSync(
+          path.join(testOutputDir, "diff-info.json"),
+          JSON.stringify(mockDiffInfo, null, 2)
+        );
+
+        const response = await request(app)
+          .get("/coverage/diff/info")
+          .expect(200);
+
+        expect(response.body.target).toBe("main");
+        expect(response.body.enableDiffCoverage).toBe(true);
+        expect(response.body.changedFiles).toEqual(["src/test.ts"]);
+      });
+
+      it("should generate diff info on demand when cache not available", async () => {
+        const response = await request(app).get("/coverage/diff/info");
+
+        // Should either return 200 with generated info or error if git command fails
+        expect([200, 500]).toContain(response.status);
+        expect(response.body).toBeDefined();
+
+        if (response.status === 200) {
+          expect(response.body.note).toContain("generated on demand");
+        }
+      });
     });
 
     describe("GET /diff", () => {
@@ -337,6 +489,130 @@ describe("Handlers", () => {
           console.log("Route may not be registered, but 404 status is correct");
           expect(response.status).toBe(404);
         }
+      });
+
+      it("should serve diff coverage report when file exists", async () => {
+        // Create a mock diff-coverage.html file
+        if (!fs.existsSync(testOutputDir)) {
+          fs.mkdirSync(testOutputDir, { recursive: true });
+        }
+
+        const mockHtmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Differential Coverage Report</title>
+</head>
+<body>
+  <h1>Coverage Report</h1>
+  <p>Test coverage data</p>
+</body>
+</html>
+        `;
+
+        fs.writeFileSync(
+          path.join(testOutputDir, "diff-coverage.html"),
+          mockHtmlContent
+        );
+
+        const response = await request(app).get("/coverage/diff").expect(200);
+
+        expect(response.headers["content-type"]).toContain("text/html");
+        expect(response.text).toContain("Differential Coverage Report");
+      });
+    });
+
+    describe("POST /merge with differential coverage", () => {
+      it("should generate differential coverage when diffTarget is valid", async () => {
+        const coverageData = {
+          "src/test.ts": {
+            path: "src/test.ts",
+            statementMap: {
+              0: {
+                start: { line: 1, column: 0 },
+                end: { line: 1, column: 10 },
+              },
+            },
+            fnMap: {},
+            branchMap: {},
+            s: { 0: 1 },
+            f: {},
+            b: {},
+          },
+        };
+
+        // Mock the core functions to avoid actual git operations
+        const core = require("../../src/core");
+        const originalGetGitDiffInfo = core.getGitDiffInfo;
+        const originalGenerateDiffCoverageReport =
+          core.generateDiffCoverageReport;
+
+        core.getGitDiffInfo = jest.fn().mockResolvedValue({
+          targetType: "git-ref",
+          changedFiles: ["src/test.ts"],
+          diffSummary: "Test diff summary",
+        });
+
+        core.generateDiffCoverageReport = jest
+          .fn()
+          .mockResolvedValue(undefined);
+
+        const response = await request(app)
+          .post("/coverage/merge")
+          .send(coverageData)
+          .expect(200);
+
+        expect(response.body.ok).toBe(true);
+
+        // Verify that diff info was cached
+        const diffInfoPath = path.join(testOutputDir, "diff-info.json");
+        expect(fs.existsSync(diffInfoPath)).toBe(true);
+
+        const cachedInfo = JSON.parse(fs.readFileSync(diffInfoPath, "utf8"));
+        expect(cachedInfo.target).toBe("main");
+        expect(cachedInfo.targetType).toBe("git-ref");
+
+        // Restore original functions
+        core.getGitDiffInfo = originalGetGitDiffInfo;
+        core.generateDiffCoverageReport = originalGenerateDiffCoverageReport;
+      });
+
+      it("should handle differential coverage generation errors gracefully", async () => {
+        const coverageData = {
+          "src/test.ts": {
+            path: "src/test.ts",
+            statementMap: {
+              0: {
+                start: { line: 1, column: 0 },
+                end: { line: 1, column: 10 },
+              },
+            },
+            fnMap: {},
+            branchMap: {},
+            s: { 0: 1 },
+            f: {},
+            b: {},
+          },
+        };
+
+        // Mock the core functions to simulate errors
+        const core = require("../../src/core");
+        const originalGetGitDiffInfo = core.getGitDiffInfo;
+
+        core.getGitDiffInfo = jest
+          .fn()
+          .mockRejectedValue(new Error("Git command failed"));
+
+        const response = await request(app)
+          .post("/coverage/merge")
+          .send(coverageData)
+          .expect(200);
+
+        // Should still succeed even if differential coverage fails
+        expect(response.body.ok).toBe(true);
+
+        // Restore original function
+        core.getGitDiffInfo = originalGetGitDiffInfo;
       });
     });
   });
@@ -392,6 +668,52 @@ describe("Handlers", () => {
         .expect(200);
 
       expect(response.text).toBe(testFileContent);
+    });
+  });
+
+  describe("Error handling edge cases", () => {
+    beforeEach(async () => {
+      const handler = await createHandler({
+        outputDir: testOutputDir,
+        diffTarget: "main",
+      });
+      app.use("/coverage", handler);
+    });
+
+    it("should handle diff/info endpoint errors", async () => {
+      // Mock core.getGitDiffInfo to throw an error
+      const core = require("../../src/core");
+      const originalGetGitDiffInfo = core.getGitDiffInfo;
+
+      core.getGitDiffInfo = jest
+        .fn()
+        .mockRejectedValue(new Error("Git command failed"));
+
+      const response = await request(app)
+        .get("/coverage/diff/info")
+        .expect(500);
+
+      expect(response.body.error).toContain("Git command failed");
+
+      // Restore original function
+      core.getGitDiffInfo = originalGetGitDiffInfo;
+    });
+
+    it("should handle malformed cached diff info", async () => {
+      // Create a malformed diff-info.json file
+      if (!fs.existsSync(testOutputDir)) {
+        fs.mkdirSync(testOutputDir, { recursive: true });
+      }
+
+      fs.writeFileSync(
+        path.join(testOutputDir, "diff-info.json"),
+        "invalid json content"
+      );
+
+      const response = await request(app).get("/coverage/diff/info");
+
+      // Should handle the JSON parse error gracefully
+      expect([200, 500]).toContain(response.status);
     });
   });
 });

@@ -218,19 +218,51 @@ export async function createHandler(
   // Generate LCOV format report
   app.get("/lcov", (req: express.Request, res: express.Response) => {
     try {
+      const lcovFilePath = path.join(outputDir, "lcov.info");
+
+      // Check if LCOV file already exists (use cached version)
+      if (fs.existsSync(lcovFilePath)) {
+        console.log("Using cached LCOV report:", lcovFilePath);
+        try {
+          const lcovContent = fs.readFileSync(lcovFilePath, "utf8");
+          res.setHeader("Content-Type", "text/plain");
+          res.setHeader(
+            "Content-Disposition",
+            "attachment; filename=lcov.info"
+          );
+          res.send(lcovContent);
+          return;
+        } catch (fileErr) {
+          console.error("Error reading cached LCOV file:", fileErr);
+          return res.status(500).json({
+            error: "Failed to read cached LCOV report",
+          });
+        }
+      }
+
+      // No cached file exists, try to generate a new one
+      const coverage = core.getCoverageObject();
+      if (!coverage || Object.keys(coverage).length === 0) {
+        return res.status(404).json({
+          error: "No coverage data available. Please run some tests first.",
+        });
+      }
+
+      // Generate new LCOV report
       const lcovFile = core.generateLcovReport(outputDir);
 
-      // Add error handling for res.download
-      res.download(lcovFile, "lcov.info", (err) => {
-        if (err) {
-          console.error("Error downloading LCOV file:", err);
-          if (!res.headersSent) {
-            res.status(500).json({
-              error: "Failed to download LCOV report",
-            });
-          }
-        }
-      });
+      // Read and serve the generated file
+      try {
+        const lcovContent = fs.readFileSync(lcovFile, "utf8");
+        res.setHeader("Content-Type", "text/plain");
+        res.setHeader("Content-Disposition", "attachment; filename=lcov.info");
+        res.send(lcovContent);
+      } catch (fileErr) {
+        console.error("Error reading generated LCOV file:", fileErr);
+        return res.status(500).json({
+          error: "Failed to read generated LCOV report",
+        });
+      }
     } catch (err) {
       console.error("Error generating LCOV report:", err);
       res.status(500).json({

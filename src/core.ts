@@ -106,7 +106,6 @@ export function generateLcovReport(customOutputDir?: string): string {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    const lcovFile = path.join(outputDir, "lcov.info");
 
     // Create report context
     const context = libReport.createContext({
@@ -126,14 +125,14 @@ export function generateLcovReport(customOutputDir?: string): string {
     report.execute(context);
 
     // The lcovonly report creates lcov.info in the output directory
-    const actualLcovFile = path.join(outputDir, "lcov.info");
+    const lcovFile = path.join(outputDir, "lcov.info");
 
-    if (!fs.existsSync(actualLcovFile)) {
-      throw new Error(`LCOV report was not generated at ${actualLcovFile}`);
+    if (!fs.existsSync(lcovFile)) {
+      throw new Error(`LCOV report was not generated at ${lcovFile}`);
     }
 
-    console.log("LCOV report generated successfully:", actualLcovFile);
-    return actualLcovFile;
+    console.log("LCOV report generated successfully:", lcovFile);
+    return lcovFile;
   } catch (err) {
     console.error("Error generating LCOV report:", err);
     throw err;
