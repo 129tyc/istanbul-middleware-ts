@@ -66,8 +66,9 @@ else
     # Fallback: start server in background and kill after 10 seconds
     echo "Starting server in background..."
     
-    # Start server with explicit process group
-    setsid npm run test-server &
+    # Start server in background (macOS compatible)
+    # Use nohup for better process isolation on macOS
+    nohup npm run test-server > /tmp/test-server.log 2>&1 &
     SERVER_PID=$!
     echo "Server started with PID: $SERVER_PID"
     
@@ -84,19 +85,22 @@ else
     sleep 7
     echo "Stopping server..."
     
-    # Kill the entire process group
+    # Kill the server process and its children
     if kill -0 $SERVER_PID 2>/dev/null; then
-        # Kill process group (negative PID)
-        kill -TERM -$SERVER_PID 2>/dev/null || true
+        # First try graceful termination
+        kill -TERM $SERVER_PID 2>/dev/null || true
         sleep 2
         # Force kill if still running
         if kill -0 $SERVER_PID 2>/dev/null; then
-            kill -KILL -$SERVER_PID 2>/dev/null || true
+            kill -KILL $SERVER_PID 2>/dev/null || true
         fi
-        echo "Server process group terminated"
+        echo "Server process terminated"
     else
         echo "Server already stopped"
     fi
+    
+    # Clean up log file
+    rm -f /tmp/test-server.log
     
     # Final cleanup
     cleanup_server
