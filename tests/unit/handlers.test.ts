@@ -408,12 +408,30 @@ describe("Handlers", () => {
   });
 
   describe("Differential Coverage Routes", () => {
+    let originalValidateDiffTarget: any;
+
     beforeEach(async () => {
+      // Mock validateDiffTarget to ensure it always succeeds in tests
+      const core = require("../../src/core");
+      originalValidateDiffTarget = core.validateDiffTarget;
+      core.validateDiffTarget = jest.fn().mockResolvedValue({
+        isValid: true,
+        type: "git-ref",
+      });
+
       const handler = await createHandler({
         outputDir: testOutputDir,
         diffTarget: "main", // Use a target that should exist
       });
       app.use("/coverage", handler);
+    });
+
+    afterEach(() => {
+      // Restore original function
+      if (originalValidateDiffTarget) {
+        const core = require("../../src/core");
+        core.validateDiffTarget = originalValidateDiffTarget;
+      }
     });
 
     describe("GET /diff/info", () => {
@@ -672,12 +690,30 @@ describe("Handlers", () => {
   });
 
   describe("Error handling edge cases", () => {
+    let originalValidateDiffTarget: any;
+
     beforeEach(async () => {
+      // Mock validateDiffTarget to ensure it always succeeds in tests
+      const core = require("../../src/core");
+      originalValidateDiffTarget = core.validateDiffTarget;
+      core.validateDiffTarget = jest.fn().mockResolvedValue({
+        isValid: true,
+        type: "git-ref",
+      });
+
       const handler = await createHandler({
         outputDir: testOutputDir,
         diffTarget: "main",
       });
       app.use("/coverage", handler);
+    });
+
+    afterEach(() => {
+      // Restore original function
+      if (originalValidateDiffTarget) {
+        const core = require("../../src/core");
+        core.validateDiffTarget = originalValidateDiffTarget;
+      }
     });
 
     it("should handle diff/info endpoint errors", async () => {
