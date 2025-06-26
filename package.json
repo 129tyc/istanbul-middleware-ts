@@ -1,7 +1,7 @@
 {
   "name": "istanbul-middleware-ts",
   "version": "1.1.4",
-  "description": "TypeScript version of Istanbul middleware for code coverage reporting",
+  "description": "Comprehensive TypeScript web service for Istanbul code coverage management with differential coverage analysis",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -36,11 +36,16 @@
   "keywords": [
     "istanbul",
     "coverage",
+    "web-service",
+    "differential-coverage",
     "middleware",
     "typescript",
     "express",
     "testing",
     "code-coverage",
+    "reporting",
+    "lcov",
+    "babel",
     "nodejs"
   ],
   "author": "Istanbul Middleware TS",
