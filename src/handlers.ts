@@ -79,7 +79,17 @@ export async function createHandler(
         });
       }
 
-      res.sendFile(diffHtmlPath);
+      // Use more robust file serving with proper error handling
+      try {
+        const htmlContent = fs.readFileSync(diffHtmlPath, "utf8");
+        res.setHeader("Content-Type", "text/html");
+        res.send(htmlContent);
+      } catch (err) {
+        console.error("Error serving diff coverage file:", err);
+        res.status(500).json({
+          error: "Failed to serve differential coverage report",
+        });
+      }
     });
   }
 
@@ -209,7 +219,18 @@ export async function createHandler(
   app.get("/lcov", (req: express.Request, res: express.Response) => {
     try {
       const lcovFile = core.generateLcovReport(outputDir);
-      res.download(lcovFile, "lcov.info");
+
+      // Add error handling for res.download
+      res.download(lcovFile, "lcov.info", (err) => {
+        if (err) {
+          console.error("Error downloading LCOV file:", err);
+          if (!res.headersSent) {
+            res.status(500).json({
+              error: "Failed to download LCOV report",
+            });
+          }
+        }
+      });
     } catch (err) {
       console.error("Error generating LCOV report:", err);
       res.status(500).json({
